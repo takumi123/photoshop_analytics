@@ -1,101 +1,205 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState } from 'react'
+import Psd from '@webtoon/psd'
+import Image from 'next/image'
+
+interface PsdFileInfo {
+  width: number;
+  height: number;
+  colorMode: string;
+  layers: Array<{
+    name: string;
+    width?: number;
+    height?: number;
+    opacity?: number;
+    visible?: boolean;
+    type: 'Layer' | 'Group';
+    open?: boolean;
+    top?: number;
+    left?: number;
+    blendMode?: string;
+    clipped?: boolean;
+    text?: string; // テキストレイヤーの内容
+    guides?: Array<{
+      position: number;
+      orientation: 'horizontal' | 'vertical';
+    }>;
+    slices?: Array<{
+      name: string;
+      bounds: {
+        top: number;
+        left: number;
+        bottom: number;
+        right: number;
+      };
+    }>;
+  }>;
+}
+
+interface PsdLayerNode {
+  type: 'Layer' | 'Group';
+  name: string;
+  width?: number;
+  height?: number;
+  opacity?: number;
+  visible?: boolean;
+  open?: boolean;
+  children?: PsdLayerNode[];
+  top?: number;
+  left?: number;
+  blendMode?: string;
+  clipped?: boolean;
+  text?: string;
+  guides?: Array<{
+    position: number;
+    orientation: 'horizontal' | 'vertical';
+  }>;
+  slices?: Array<{
+    name: string;
+    bounds: {
+      top: number;
+      left: number;
+      bottom: number;
+      right: number;
+    };
+  }>;
+}
+
+export default function PsdAnalyzer() {
+  const [psdInfo, setPsdInfo] = useState<PsdFileInfo | null>(null)
+  const [imagePreview, setImagePreview] = useState<string>('')
+
+  const analyzePsd = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const psdFile = Psd.parse(arrayBuffer)
+
+      // キャンバスに合成イメージを描画
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      canvas.width = psdFile.width
+      canvas.height = psdFile.height
+      
+      const compositeBuffer = await psdFile.composite()
+      const imageData = new ImageData(
+        compositeBuffer,
+        psdFile.width,
+        psdFile.height
+      )
+      ctx?.putImageData(imageData, 0, 0)
+      setImagePreview(canvas.toDataURL())
+
+      // PSDファイルの情報を収集
+      const info = {
+        width: psdFile.width,
+        height: psdFile.height,
+        colorMode: psdFile.colorMode.toString(),
+        layers: [] as PsdFileInfo['layers']
+      }
+
+      // レイヤー情報を再帰的に収集
+      const collectLayerInfo = (node: PsdLayerNode) => {
+        if (node.type === 'Layer') {
+          info.layers.push({
+            name: node.name,
+            width: node.width,
+            height: node.height,
+            opacity: node.opacity,
+            visible: node.visible,
+            type: node.type,
+            top: node.top,
+            left: node.left,
+            blendMode: node.blendMode,
+            clipped: node.clipped,
+            text: (node as PsdLayerNode).text, // テキストレイヤーの内容
+            guides: (node as PsdLayerNode).guides, // ガイド情報
+            slices: (node as PsdLayerNode).slices // スライス情報
+          })
+        } else if (node.type === 'Group') {
+          info.layers.push({
+            name: node.name,
+            type: node.type,
+            open: node.open,
+            guides: (node as PsdLayerNode).guides,
+            slices: (node as PsdLayerNode).slices
+          })
+          node.children?.forEach((child: PsdLayerNode) => collectLayerInfo(child))
+        }
+      }
+
+      psdFile.children.forEach(collectLayerInfo)
+      setPsdInfo(info)
+
+    } catch (error) {
+      console.error('PSDファイルの解析中にエラーが発生しました:', error)
+      alert('PSDファイルの解析に失敗しました')
+    }
+  }
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4 text-black">PSDファイル解析ツール</h1>
+      
+      <input
+        type="file"
+        accept=".psd,.psb"
+        onChange={analyzePsd}
+        className="mb-4 block text-black"
+      />
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      {imagePreview && (
+        <div className="mb-4">
+          <h2 className="text-xl font-bold mb-2 text-black">プレビュー</h2>
+          <Image
+            src={imagePreview}
+            alt="PSD preview"
+            width={psdInfo?.width || 0}
+            height={psdInfo?.height || 0}
+            className="max-w-full h-auto"
+            unoptimized
+          />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
+
+      {psdInfo && (
+        <div className="mb-4">
+          <h2 className="text-xl font-bold mb-2 text-black">ファイル情報</h2>
+          <div className="bg-gray-100 p-4 rounded">
+            <p className="text-black">幅: {psdInfo.width}px</p>
+            <p className="text-black">高さ: {psdInfo.height}px</p>
+            <p className="text-black">カラーモード: {psdInfo.colorMode}</p>
+            
+            <h3 className="text-lg font-bold mt-4 mb-2 text-black">レイヤー構造</h3>
+            <div className="pl-4">
+              {psdInfo.layers.map((layer: PsdFileInfo['layers'][number], index: number) => (
+                <div key={index} className="mb-2">
+                  <p className="text-black">
+                    {layer.type === 'Group' ? '📁' : '🖼️'} {layer.name}
+                    {layer.type === 'Layer' && (
+                      <span className="text-sm text-gray-600">
+                        {' '}
+                        ({layer.width}x{layer.height}, 
+                        位置: X:{layer.left}px Y:{layer.top}px, 
+                        不透明度: {layer.opacity}%, 
+                        表示: {layer.visible ? '表示' : '非表示'}, 
+                        ブレンドモード: {layer.blendMode}, 
+                        クリッピング: {layer.clipped ? 'あり' : 'なし'}
+                        {layer.text && `, テキスト: ${layer.text}`}
+                        {layer.guides && layer.guides.length > 0 && `, ガイド数: ${layer.guides.length}`}
+                        {layer.slices && layer.slices.length > 0 && `, スライス数: ${layer.slices.length}`})
+                      </span>
+                    )}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
+  )
 }
